@@ -1,0 +1,12 @@
+$kind: grpc-request
+name: 'Get Truck'
+order: 2000
+url: '{{grpc_host}}'
+methodPath: '/trucks.TruckService/GetTruck'
+message:
+  content: |-
+    {
+      "truck_id": 1
+    }
+settings:
+  secureConnection: false

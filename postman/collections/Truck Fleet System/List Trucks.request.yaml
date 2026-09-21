@@ -1,0 +1,9 @@
+$kind: grpc-request
+name: 'List Trucks'
+order: 1000
+url: '{{grpc_host}}'
+methodPath: '/trucks.TruckService/ListTrucks'
+message:
+  content: '{}'
+settings:
+  secureConnection: false

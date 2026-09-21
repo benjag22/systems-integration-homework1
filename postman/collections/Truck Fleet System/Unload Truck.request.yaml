@@ -1,0 +1,13 @@
+$kind: grpc-request
+name: 'Unload Truck'
+order: 4000
+url: '{{grpc_host}}'
+methodPath: '/trucks.TruckService/UnloadTruck'
+message:
+  content: |-
+    {
+      "truck_id": 1,
+      "load_id": 1
+    }
+settings:
+  secureConnection: false

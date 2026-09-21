@@ -1,0 +1,7 @@
+$kind: collection
+name: 'Truck Fleet System'
+description: 'gRPC collection for the Truck Fleet System service. Manages trucks, loads, and routes.'
+variables:
+  - key: grpc_host
+    value: 'localhost:9090'
+    description: 'gRPC server host and port'

@@ -1,0 +1,14 @@
+$kind: grpc-request
+name: 'Load Truck'
+order: 3000
+url: '{{grpc_host}}'
+methodPath: '/trucks.TruckService/LoadTruck'
+message:
+  content: |-
+    {
+      "truck_id": 1,
+      "weight_kg": 500,
+      "detail": "Sample cargo"
+    }
+settings:
+  secureConnection: false
