@@ -1,0 +1,7 @@
+# Use this workspace to collaborate
+workspace:
+  id: 87caba6c-5709-406c-8cbc-638f86906355
+
+localResources:
+  specs:
+    - ../truck-fleet-system/src/main/proto/trucks.proto
