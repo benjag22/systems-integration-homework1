@@ -53,7 +53,7 @@ public class TruckGRPCService
             TruckEntity truckEntity = optionalTruck.get();
 
             List<RouteEntity> routes =
-                    truckRouteService.findByTruck(truckEntity);
+                    truckRouteService.findByTruckId(truckEntity.getId());
 
             List<TruckLoadEntity> loads =
                     truckLoadService.findAllByTruck(truckEntity);
@@ -97,10 +97,12 @@ public class TruckGRPCService
             observer.onNext(response);
             observer.onCompleted();
 
-        } catch (Exception e) {
+        }
+        catch (Exception e) {
+
             observer.onError(
                     Status.INTERNAL
-                            .withDescription("error retrieving truck")
+                            .withDescription("error al obtener el camion")
                             .asRuntimeException()
             );
         }
