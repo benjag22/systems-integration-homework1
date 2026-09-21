@@ -2,7 +2,8 @@ package com.example.truckfleetsystem.entity;
 
 import jakarta.persistence.*;
 
-@Entity(name = "truck")
+@Entity
+@Table(name = "truck", schema = "public")
 public class TruckEntity {
     @Column(name = "max_capacity_kg", nullable = false)
     private Integer maxCapacityKg;

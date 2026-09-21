@@ -1,7 +1,8 @@
 package com.example.truckfleetsystem.entity;
 import jakarta.persistence.*;
 
-@Entity(name = "route")
+@Entity
+@Table(name = "route", schema = "public")
 public class RouteEntity {
     @Column(name = "destination", nullable = false, length = 100)
     private String destination;

@@ -4,7 +4,8 @@ import jakarta.persistence.*;
 import org.hibernate.annotations.OnDelete;
 import org.hibernate.annotations.OnDeleteAction;
 
-@Entity(name = "truck_route")
+@Entity
+@Table(name = "truck_route", schema = "public")
 public class TruckRouteEntity {
     @MapsId
     @ManyToOne(fetch = FetchType.LAZY, optional = false)

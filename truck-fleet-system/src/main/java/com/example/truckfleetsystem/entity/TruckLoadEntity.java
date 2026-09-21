@@ -2,7 +2,8 @@ package com.example.truckfleetsystem.entity;
 
 import jakarta.persistence.*;
 
-@Entity(name = "truck_load")
+@Entity
+@Table(name = "truck_load", schema = "public")
 public class TruckLoadEntity {
     @Column(name = "detail", nullable = false, length = 300)
     private String detail;
