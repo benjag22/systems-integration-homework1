@@ -5,6 +5,7 @@ import com.example.truckfleetsystem.entity.TruckEntity;
 import org.springframework.stereotype.Service;
 import com.example.truckfleetsystem.repository.TruckRepository;
 
+import java.util.List;
 import java.util.Optional;
 
 @Service
@@ -18,5 +19,8 @@ public class TruckService {
     public Optional<TruckEntity> getTruck(GetTruckRequest request) {
         int id = request.getTruckId();
         return truckRepository.findById(id);
+    }
+    public List<TruckEntity> getAll(){
+        return truckRepository.findAll();
     }
 }

@@ -32,11 +32,9 @@ message UnloadTruckRequest {
   int32 load_id = 2;
 }
 
-
 message ListTrucksResponse {
   repeated TruckWithRoutes trucks = 1;
 }
-
 
 message TruckWithRoutes {
   Truck truck = 1;
