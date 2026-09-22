@@ -18,4 +18,9 @@ public class TruckLoadService {
     public List<TruckLoadEntity> findAllByTruck(TruckEntity truck) {
         return truckLoadRepository.findByTruck(truck);
     }
+    public void createLoad(TruckEntity truck, String detail, int weight){
+        TruckLoadEntity createdLoad = new TruckLoadEntity(detail, weight, truck);
+        truckLoadRepository.save(createdLoad);
+    }
+
 }

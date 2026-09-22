@@ -17,8 +17,17 @@ public class TruckLoadEntity {
     @Column(name = "id", nullable = false)
     private Integer id;
 
+    public TruckLoadEntity() {
+
+    }
+
     public void setId(Integer id) {
         this.id = id;
+    }
+    public TruckLoadEntity(String detail, int weightKg, TruckEntity truck){
+        this.detail = detail;
+        this.weightKg = weightKg;
+        this.truck = truck;
     }
 
     public String getDetail() {

@@ -37,7 +37,7 @@ public class TruckGRPCService extends TruckServiceGrpc.TruckServiceImplBase {
             StreamObserver<TruckWithRoutes> observer
     ) {
         try {
-            Optional<TruckEntity> optionalTruck = truckService.getTruck(request);
+            Optional<TruckEntity> optionalTruck = truckService.getTruck(request.getTruckId());
 
             if (optionalTruck.isEmpty()) {
                 observer.onError(
@@ -92,6 +92,61 @@ public class TruckGRPCService extends TruckServiceGrpc.TruckServiceImplBase {
             System.out.println("67");
         }
 
+    }
+
+    @Override
+    public void unloadTruck(UnloadTruckRequest request, StreamObserver<Truck> observer){
+
+    }
+
+    @Override
+    public void loadTruck(LoadTruckRequest request, StreamObserver<Truck>observer) {
+        try {
+            Optional<TruckEntity> optionalTruck = truckService.getTruck(request.getTruckId());
+
+            if (optionalTruck.isEmpty()) {
+                observer.onError(
+                        Status.NOT_FOUND
+                                .withDescription("no se encontró el camión con id:" + request.getTruckId())
+                                .asRuntimeException()
+                );
+                return;
+            }
+
+            TruckEntity truckEntity = optionalTruck.get();
+            TruckEntity savedTruck = truckService.loadTruck(
+                    truckEntity,
+                    request.getDetail(),
+                    request.getWeightKg()
+            );
+            List<TruckLoadEntity> loads = truckLoadService.findAllByTruck(savedTruck);
+
+            observer.onNext(Truck
+                    .newBuilder()
+                    .setId(savedTruck.getId())
+                    .setLicensePlate(savedTruck.getLicensePlate())
+                    .setMaxCapacityKg(savedTruck.getMaxCapacityKg())
+                    .addAllLoads(
+                            loads.stream()
+                                    .map(truckLoadEntity -> LoadItem.newBuilder()
+                                            .setId(truckLoadEntity.getId())
+                                            .setDetail(truckLoadEntity.getDetail())
+                                            .setWeightKg(truckLoadEntity.getWeightKg())
+                                            .build()
+                                    )
+                                    .toList()
+                    )
+                    .build()
+            );
+
+            observer.onCompleted();
+        }catch (Exception e) {
+            observer.onError(
+                    Status.INTERNAL
+                            .withDescription("error al intentar cargar")
+                            .asRuntimeException()
+            );
+        }
     }
 
     private TruckWithRoutes getTruckDetail(TruckEntity truckEntity){
