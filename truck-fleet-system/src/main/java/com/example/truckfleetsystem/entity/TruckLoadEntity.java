@@ -9,6 +9,7 @@ public class TruckLoadEntity {
     private String detail;
     @Column(name = "weight_kg", nullable = false)
     private Integer weightKg;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "truck_id", nullable = false)
     private TruckEntity truck;
@@ -34,16 +35,8 @@ public class TruckLoadEntity {
         return detail;
     }
 
-    public void setDetail(String detail) {
-        this.detail = detail;
-    }
-
     public Integer getWeightKg() {
         return weightKg;
-    }
-
-    public void setWeightKg(Integer weightKg) {
-        this.weightKg = weightKg;
     }
 
     public TruckEntity getTruck() {

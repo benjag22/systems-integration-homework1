@@ -6,7 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
 
-public interface TruckLoadRepository extends JpaRepository<TruckLoadEntity,Long> {
+public interface TruckLoadRepository extends JpaRepository<TruckLoadEntity,Integer> {
 
     List<TruckLoadEntity> findByTruck(TruckEntity truck);
 }

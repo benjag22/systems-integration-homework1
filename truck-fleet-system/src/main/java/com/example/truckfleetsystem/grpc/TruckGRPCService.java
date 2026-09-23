@@ -96,7 +96,58 @@ public class TruckGRPCService extends TruckServiceGrpc.TruckServiceImplBase {
 
     @Override
     public void unloadTruck(UnloadTruckRequest request, StreamObserver<Truck> observer){
+        try{
+            Optional<TruckEntity> truckSaved = truckService.getTruck(request.getTruckId());
+            Optional<TruckLoadEntity> truckLoadSaved = truckLoadService.findById(request.getLoadId());
 
+            if (truckSaved.isEmpty()){
+                observer.onError(
+                        Status.NOT_FOUND
+                                .withDescription("No se encontro el camion para descargar")
+                                .asRuntimeException()
+                );
+                return;
+            }
+            if (truckLoadSaved.isEmpty()){
+                observer.onError(
+                        Status.NOT_FOUND
+                                .withDescription("No se encontro la carga para descargar")
+                                .asRuntimeException()
+                );
+                return;
+            }
+
+            TruckEntity truckChecked = truckSaved.get();
+            TruckLoadEntity truckLoadChecked = truckLoadSaved.get();
+
+            truckLoadService.unload(truckLoadChecked);
+
+            List<TruckLoadEntity> loads = truckLoadService.findAllByTruck(truckChecked);
+            observer.onNext(Truck
+                    .newBuilder()
+                    .setId(truckChecked.getId())
+                    .setLicensePlate(truckChecked.getLicensePlate())
+                    .setMaxCapacityKg(truckChecked.getMaxCapacityKg())
+                    .addAllLoads(
+                            loads.stream()
+                                    .map(truckLoadEntity -> LoadItem.newBuilder()
+                                            .setId(truckLoadEntity.getId())
+                                            .setDetail(truckLoadEntity.getDetail())
+                                            .setWeightKg(truckLoadEntity.getWeightKg())
+                                            .build()
+                                    )
+                                    .toList()
+                    )
+                    .build()
+            );
+            observer.onCompleted();
+        }catch (Exception e){
+            observer.onError(
+                    Status.INTERNAL
+                            .withDescription("error al intentar descargar")
+                            .asRuntimeException()
+            );
+        }
     }
 
     @Override

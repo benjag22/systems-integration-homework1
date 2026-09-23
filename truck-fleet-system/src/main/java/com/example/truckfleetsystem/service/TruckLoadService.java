@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import com.example.truckfleetsystem.repository.TruckLoadRepository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Service
 public class TruckLoadService {
@@ -23,4 +24,10 @@ public class TruckLoadService {
         truckLoadRepository.save(createdLoad);
     }
 
+    public Optional<TruckLoadEntity> findById(int id){
+        return truckLoadRepository.findById(id);
+    }
+    public void unload(TruckLoadEntity load){
+        truckLoadRepository.delete(load);
+    }
 }
