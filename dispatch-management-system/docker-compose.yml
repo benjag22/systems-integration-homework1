@@ -11,7 +11,7 @@ services:
       POSTGRES_USER: ${DATABASE_USER:-dispatch_user}
       POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-dispatch_pass}
     ports:
-      - "${DATABASE_PORT:-5433}:5432"
+      - "${DATABASE_PORT:-5434}:5432"
     volumes:
       - dispatch_postgres_data:/var/lib/postgresql/data
       - ./db.sql:/docker-entrypoint-initdb.d/01-db.sql:ro
@@ -36,6 +36,8 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://dispatch-postgres:5432/${DATABASE_NAME:-dispatch_db}
       SPRING_DATASOURCE_USERNAME: ${DATABASE_USER:-dispatch_user}
       SPRING_DATASOURCE_PASSWORD: ${DATABASE_PASSWORD:-dispatch_pass}
+      AUTH_USERNAME: ${AUTH_USERNAME:-demo}
+      AUTH_PASSWORD: ${AUTH_PASSWORD:-demo123}
     depends_on:
       dispatch-postgres:
         condition: service_healthy

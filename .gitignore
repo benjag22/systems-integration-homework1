@@ -1,3 +1,5 @@
 .postman/
 .idea/
+**/bin/
+**/obj/
 

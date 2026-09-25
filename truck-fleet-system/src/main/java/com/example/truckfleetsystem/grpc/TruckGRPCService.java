@@ -6,16 +6,12 @@ import com.example.truckfleetsystem.entity.TruckEntity;
 import com.example.truckfleetsystem.entity.TruckLoadEntity;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.grpc.server.service.GrpcService;
 import com.example.truckfleetsystem.service.TruckLoadService;
 import com.example.truckfleetsystem.service.TruckRouteService;
 import com.example.truckfleetsystem.service.TruckService;
 
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.ObjectOutputStream;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
@@ -28,18 +24,19 @@ public class TruckGRPCService extends TruckServiceGrpc.TruckServiceImplBase {
     private final TruckLoadService truckLoadService;
 
     private static final String CACHE_PREFIX = "truck:";
-
-    @Autowired
-    private RedisTemplate<String, byte[]> redisTemplate;
+    private static final Duration AVAILABILITY_CACHE_TTL = Duration.ofHours(1);
+    private final RedisTemplate<String, byte[]> redisTemplate;
 
     public TruckGRPCService(
             TruckService truckService,
             TruckRouteService truckRouteService,
-            TruckLoadService truckLoadService
+            TruckLoadService truckLoadService,
+            RedisTemplate<String, byte[]> redisTemplate
     ) {
         this.truckService = truckService;
         this.truckRouteService = truckRouteService;
         this.truckLoadService = truckLoadService;
+        this.redisTemplate = redisTemplate;
     }
 
     @Override
@@ -96,8 +93,6 @@ public class TruckGRPCService extends TruckServiceGrpc.TruckServiceImplBase {
                             .withDescription("error al obtener el detalle de los camiones")
                             .asRuntimeException()
             );
-        } finally {
-            System.out.println("67");
         }
 
     }
@@ -128,19 +123,12 @@ public class TruckGRPCService extends TruckServiceGrpc.TruckServiceImplBase {
             TruckEntity truckChecked = truckSaved.get();
             TruckLoadEntity truckLoadChecked = truckLoadSaved.get();
 
+            String cacheKey = availabilityCacheKey(truckChecked.getId());
+            redisTemplate.delete(cacheKey);
             truckLoadService.unload(truckLoadChecked);
 
             int availability = truckLoadService.calculateTruckAvailability(truckChecked);
-            redisTemplate.opsForValue().set(
-                    CACHE_PREFIX + truckChecked.getId(),
-                    TruckAvailability.newBuilder()
-                            .setTruckId(truckSaved.get().getId())
-                            .setMaxCapacityKg(truckSaved.get().getMaxCapacityKg())
-                            .setAvailableCapacityKg(availability)
-                            .build()
-                            .toByteArray(),
-                    Duration.ofHours(1)
-            );
+            cacheAvailability(truckChecked, availability);
 
             List<TruckLoadEntity> loads = truckLoadService.findAllByTruck(truckChecked);
             observer.onNext(Truck
@@ -185,6 +173,7 @@ public class TruckGRPCService extends TruckServiceGrpc.TruckServiceImplBase {
             }
 
             TruckEntity truckEntity = optionalTruck.get();
+            redisTemplate.delete(availabilityCacheKey(truckEntity.getId()));
             TruckEntity truckChecked = truckService.loadTruck(
                     truckEntity,
                     request.getDetail(),
@@ -193,16 +182,7 @@ public class TruckGRPCService extends TruckServiceGrpc.TruckServiceImplBase {
 
             List<TruckLoadEntity> loads = truckLoadService.findAllByTruck(truckChecked);
             int availability = truckLoadService.calculateTruckAvailability(truckChecked);
-            redisTemplate.opsForValue().set(
-                    CACHE_PREFIX + truckChecked.getId(),
-                    TruckAvailability.newBuilder()
-                            .setTruckId(truckChecked.getId())
-                            .setMaxCapacityKg(truckChecked.getMaxCapacityKg())
-                            .setAvailableCapacityKg(availability)
-                            .build()
-                            .toByteArray(),
-                    Duration.ofHours(1)
-            );
+            cacheAvailability(truckChecked, availability);
             observer.onNext(Truck
                     .newBuilder()
                     .setId(truckChecked.getId())
@@ -235,7 +215,7 @@ public class TruckGRPCService extends TruckServiceGrpc.TruckServiceImplBase {
     @Override
     public void checkAvailability(GetTruckRequest request, StreamObserver<TruckAvailability> observer) {
         try {
-            String key = CACHE_PREFIX + request.getTruckId();
+            String key = availabilityCacheKey(request.getTruckId());
             byte[] cachedBytes = redisTemplate.opsForValue().get(key);
 
             if (cachedBytes != null) {
@@ -262,7 +242,7 @@ public class TruckGRPCService extends TruckServiceGrpc.TruckServiceImplBase {
                     .setAvailableCapacityKg(availability)
                     .build();
 
-            redisTemplate.opsForValue().set(key, response.toByteArray(), Duration.ofHours(1));
+            redisTemplate.opsForValue().set(key, response.toByteArray(), AVAILABILITY_CACHE_TTL);
 
             observer.onNext(response);
             observer.onCompleted();
@@ -275,6 +255,23 @@ public class TruckGRPCService extends TruckServiceGrpc.TruckServiceImplBase {
                             .asRuntimeException()
             );
         }
+    }
+
+    private String availabilityCacheKey(int truckId) {
+        return CACHE_PREFIX + truckId;
+    }
+
+    private void cacheAvailability(TruckEntity truck, int availableCapacityKg) {
+        TruckAvailability response = TruckAvailability.newBuilder()
+                .setTruckId(truck.getId())
+                .setMaxCapacityKg(truck.getMaxCapacityKg())
+                .setAvailableCapacityKg(availableCapacityKg)
+                .build();
+        redisTemplate.opsForValue().set(
+                availabilityCacheKey(truck.getId()),
+                response.toByteArray(),
+                AVAILABILITY_CACHE_TTL
+        );
     }
 
     private TruckWithRoutes getTruckDetail(TruckEntity truckEntity) {

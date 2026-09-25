@@ -18,9 +18,17 @@ spring:
     properties:
       hibernate:
         format_sql: true
+  sql:
+    init:
+      mode: always
 
 springdoc:
   api-docs:
     path: /api-docs
   swagger-ui:
     path: /docs
+
+app:
+  auth:
+    username: ${AUTH_USERNAME:demo}
+    password: ${AUTH_PASSWORD:demo123}

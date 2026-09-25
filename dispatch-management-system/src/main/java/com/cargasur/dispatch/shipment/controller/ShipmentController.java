@@ -20,8 +20,11 @@ public class ShipmentController {
     private final ShipmentService shipmentService;
 
     @PostMapping
-    public ResponseEntity<ShipmentResponse> createShipment(@Valid @RequestBody CreateShipmentRequest request) {
-        ShipmentResponse response = shipmentService.createShipment(request);
+    public ResponseEntity<ShipmentResponse> createShipment(
+            @RequestHeader("Idempotency-Key") String idempotencyKey,
+            @Valid @RequestBody CreateShipmentRequest request
+    ) {
+        ShipmentResponse response = shipmentService.createShipment(idempotencyKey, request);
         URI location = ServletUriComponentsBuilder.fromCurrentRequest()
                 .path("/{id}")
                 .buildAndExpand(response.id())

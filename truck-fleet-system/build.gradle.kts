@@ -25,6 +25,7 @@ dependencies {
     implementation(libs.spring.data.jpa)
     implementation (libs.redis)
     runtimeOnly(libs.postgresql)
+    testImplementation("org.springframework.boot:spring-boot-starter-test")
 }
 
 protobuf {
