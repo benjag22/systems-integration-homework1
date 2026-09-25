@@ -1,8 +1,6 @@
 $kind: grpc-request
-name: 'Unload Truck'
-order: 5000
-url: '{{grpc_host}}'
-methodPath: '/trucks.TruckService/UnloadTruck'
+url: "{{grpc_host}}"
+methodPath: /trucks.TruckService/UnloadTruck
 message:
   content: |-
     {
@@ -11,3 +9,4 @@ message:
     }
 settings:
   secureConnection: false
+order: 4139
