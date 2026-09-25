@@ -13,6 +13,9 @@ import com.example.truckfleetsystem.service.TruckLoadService;
 import com.example.truckfleetsystem.service.TruckRouteService;
 import com.example.truckfleetsystem.service.TruckService;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.ObjectOutputStream;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
@@ -27,7 +30,7 @@ public class TruckGRPCService extends TruckServiceGrpc.TruckServiceImplBase {
     private static final String CACHE_PREFIX = "truck:";
 
     @Autowired
-    private RedisTemplate<String, TruckAvailability> redisTemplate;
+    private RedisTemplate<String, byte[]> redisTemplate;
 
     public TruckGRPCService(
             TruckService truckService,
@@ -130,11 +133,13 @@ public class TruckGRPCService extends TruckServiceGrpc.TruckServiceImplBase {
             int availability = truckLoadService.calculateTruckAvailability(truckChecked);
             redisTemplate.opsForValue().set(
                     CACHE_PREFIX + truckChecked.getId(),
-                    TruckAvailability.newBuilder()
-                            .setTruckId(truckSaved.get().getId())
-                            .setMaxCapacityKg(truckSaved.get().getMaxCapacityKg())
-                            .setAvailableCapacityKg(availability)
-                            .build(),
+                    serialize(
+                            TruckAvailability.newBuilder()
+                                    .setTruckId(truckSaved.get().getId())
+                                    .setMaxCapacityKg(truckSaved.get().getMaxCapacityKg())
+                                    .setAvailableCapacityKg(availability)
+                                    .build()
+                    ),
                     Duration.ofHours(1)
             );
 
@@ -191,11 +196,12 @@ public class TruckGRPCService extends TruckServiceGrpc.TruckServiceImplBase {
             int availability = truckLoadService.calculateTruckAvailability(truckChecked);
             redisTemplate.opsForValue().set(
                     CACHE_PREFIX + truckChecked.getId(),
-                    TruckAvailability.newBuilder()
+                    serialize(TruckAvailability.newBuilder()
                             .setTruckId(truckChecked.getId())
                             .setMaxCapacityKg(truckChecked.getMaxCapacityKg())
                             .setAvailableCapacityKg(availability)
-                            .build(),
+                            .build()
+                    ),
                     Duration.ofHours(1)
             );
             observer.onNext(Truck
@@ -221,6 +227,7 @@ public class TruckGRPCService extends TruckServiceGrpc.TruckServiceImplBase {
             observer.onError(
                     Status.INTERNAL
                             .withDescription("error al intentar cargar")
+                            .withCause(e)
                             .asRuntimeException()
             );
         }
@@ -229,10 +236,11 @@ public class TruckGRPCService extends TruckServiceGrpc.TruckServiceImplBase {
     @Override
     public void checkAvailability(GetTruckRequest request, StreamObserver<TruckAvailability> observer) {
         try {
-            String KEY = CACHE_PREFIX + request.getTruckId();
-            TruckAvailability cachedResponse = redisTemplate.opsForValue().get(KEY);
+            String key = CACHE_PREFIX + request.getTruckId();
+            byte[] cachedBytes = redisTemplate.opsForValue().get(key);
 
-            if (cachedResponse != null) {
+            if (cachedBytes != null) {
+                TruckAvailability cachedResponse = TruckAvailability.parseFrom(cachedBytes);
                 observer.onNext(cachedResponse);
                 observer.onCompleted();
                 return;
@@ -255,13 +263,18 @@ public class TruckGRPCService extends TruckServiceGrpc.TruckServiceImplBase {
                     .setAvailableCapacityKg(availability)
                     .build();
 
-            redisTemplate.opsForValue().set(KEY, response, Duration.ofHours(1));
+            redisTemplate.opsForValue().set(key, response.toByteArray(), Duration.ofHours(1));
 
             observer.onNext(response);
             observer.onCompleted();
 
         } catch (Exception e) {
-            throw new RuntimeException(e);
+            observer.onError(
+                    Status.INTERNAL
+                            .withDescription("Error al devolver la disponibilidad")
+                            .withCause(e)
+                            .asRuntimeException()
+            );
         }
     }
 
@@ -304,5 +317,13 @@ public class TruckGRPCService extends TruckServiceGrpc.TruckServiceImplBase {
                 .setTruck(protoTruck)
                 .addAllRoutes(protoRoutes)
                 .build();
+    }
+
+    private byte[] serialize(TruckAvailability truckAvailability) throws IOException {
+        try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
+             ObjectOutputStream oos = new ObjectOutputStream(bos)) {
+            oos.writeObject(truckAvailability);
+            return bos.toByteArray();
+        }
     }
 }
