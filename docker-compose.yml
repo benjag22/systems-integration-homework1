@@ -1,0 +1,81 @@
+services:
+  fleet-postgres:
+    image: postgres:17
+    container_name: fleet-postgres
+    environment:
+      POSTGRES_DB: fleet_db
+      POSTGRES_USER: fleet_user
+      POSTGRES_PASSWORD: fleet_pass
+    volumes:
+      - fleet_postgres_data:/var/lib/postgresql/data
+      - ./truck-fleet-system/db.sql:/docker-entrypoint-initdb.d/01-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fleet_user -d fleet_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  fleet-redis:
+    image: redis:latest
+    container_name: fleet-redis
+    volumes:
+      - fleet_redis_data:/data
+
+  fleet-api:
+    build:
+      context: ./truck-fleet-system
+    container_name: fleet-api
+    restart: unless-stopped
+    environment:
+      DB_URL: jdbc:postgresql://fleet-postgres:5432/fleet_db
+      DATABASE_USER: fleet_user
+      DATABASE_PASSWORD: fleet_pass
+      REDIS_HOST: fleet-redis
+      REDIS_PORT: 6379
+    ports:
+      - "9090:9090"
+    depends_on:
+      fleet-postgres:
+        condition: service_healthy
+
+  dispatch-postgres:
+    image: postgres:17
+    container_name: dispatch-postgres
+    environment:
+      POSTGRES_DB: dispatch_db
+      POSTGRES_USER: dispatch_user
+      POSTGRES_PASSWORD: dispatch_pass
+    volumes:
+      - dispatch_postgres_data:/var/lib/postgresql/data
+      - ./dispatch-management-system/db.sql:/docker-entrypoint-initdb.d/01-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dispatch_user -d dispatch_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  dispatch-api:
+    build:
+      context: ./dispatch-management-system
+    container_name: dispatch-api
+    restart: unless-stopped
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://dispatch-postgres:5432/dispatch_db
+      SPRING_DATASOURCE_USERNAME: dispatch_user
+      SPRING_DATASOURCE_PASSWORD: dispatch_pass
+      AUTH_USERNAME: ${AUTH_USERNAME:-demo}
+      AUTH_PASSWORD: ${AUTH_PASSWORD:-demo123}
+      FLEET_GRPC_HOST: fleet-api
+      FLEET_GRPC_PORT: 9090
+    ports:
+      - "8080:8080"
+    depends_on:
+      dispatch-postgres:
+        condition: service_healthy
+      fleet-api:
+        condition: service_started
+
+volumes:
+  fleet_postgres_data:
+  fleet_redis_data:
+  dispatch_postgres_data:
