@@ -23,6 +23,7 @@ repositories {
 dependencies {
     implementation(libs.spring.grpc.server)
     implementation(libs.spring.data.jpa)
+    implementation (libs.redis)
     runtimeOnly(libs.postgresql)
 }
 

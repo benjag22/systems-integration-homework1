@@ -1,12 +1,21 @@
 
 services:
+  redis:
+    image: redis:latest
+    container_name: truck-fleet-redis
+    env_file:
+      - path: ".env"
+        required: true
+    ports:
+      - "${REDIS_PORT}:6379"
+    volumes:
+      - redis_data:/data
   postgres:
     env_file:
       - path: ".env"
         required: true
     image: postgres:17
     container_name: trucks-postgres
-    restart: unless-stopped
 
     environment:
       POSTGRES_DB: ${DATABASE_NAME}
@@ -28,3 +37,5 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:
+    driver: local
