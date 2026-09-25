@@ -13,6 +13,8 @@ service TruckService {
   rpc UnloadTruck (UnloadTruckRequest) returns (Truck);
 
   rpc ListTrucks (ListTrucksRequest) returns (ListTrucksResponse);
+
+  rpc CheckAvailability (GetTruckRequest) returns (TruckAvailability);
 }
 
 message GetTruckRequest {
@@ -60,4 +62,10 @@ message Route {
   int32 distance_km = 3;
   string origin = 4;
   string destination = 5;
+}
+
+message TruckAvailability {
+  int32 truck_id = 1;
+  int32 available_capacity_kg = 2;
+  int32 max_capacity_kg = 3;
 }

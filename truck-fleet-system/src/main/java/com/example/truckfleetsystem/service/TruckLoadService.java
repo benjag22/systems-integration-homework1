@@ -30,4 +30,13 @@ public class TruckLoadService {
     public void unload(TruckLoadEntity load){
         truckLoadRepository.delete(load);
     }
+
+    public int calculateTruckAvailability(TruckEntity truck) {
+        List<TruckLoadEntity> loads = truckLoadRepository.findByTruck(truck);
+        int currentCharge = loads.stream()
+                .map(TruckLoadEntity::getWeightKg)
+                .reduce(0, Integer::sum);
+
+        return Math.max(truck.getMaxCapacityKg() - currentCharge, 0);
+    }
 }
