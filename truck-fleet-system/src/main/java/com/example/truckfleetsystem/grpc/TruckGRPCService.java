@@ -133,13 +133,12 @@ public class TruckGRPCService extends TruckServiceGrpc.TruckServiceImplBase {
             int availability = truckLoadService.calculateTruckAvailability(truckChecked);
             redisTemplate.opsForValue().set(
                     CACHE_PREFIX + truckChecked.getId(),
-                    serialize(
-                            TruckAvailability.newBuilder()
-                                    .setTruckId(truckSaved.get().getId())
-                                    .setMaxCapacityKg(truckSaved.get().getMaxCapacityKg())
-                                    .setAvailableCapacityKg(availability)
-                                    .build()
-                    ),
+                    TruckAvailability.newBuilder()
+                            .setTruckId(truckSaved.get().getId())
+                            .setMaxCapacityKg(truckSaved.get().getMaxCapacityKg())
+                            .setAvailableCapacityKg(availability)
+                            .build()
+                            .toByteArray(),
                     Duration.ofHours(1)
             );
 
@@ -196,12 +195,12 @@ public class TruckGRPCService extends TruckServiceGrpc.TruckServiceImplBase {
             int availability = truckLoadService.calculateTruckAvailability(truckChecked);
             redisTemplate.opsForValue().set(
                     CACHE_PREFIX + truckChecked.getId(),
-                    serialize(TruckAvailability.newBuilder()
+                    TruckAvailability.newBuilder()
                             .setTruckId(truckChecked.getId())
                             .setMaxCapacityKg(truckChecked.getMaxCapacityKg())
                             .setAvailableCapacityKg(availability)
                             .build()
-                    ),
+                            .toByteArray(),
                     Duration.ofHours(1)
             );
             observer.onNext(Truck
@@ -317,13 +316,5 @@ public class TruckGRPCService extends TruckServiceGrpc.TruckServiceImplBase {
                 .setTruck(protoTruck)
                 .addAllRoutes(protoRoutes)
                 .build();
-    }
-
-    private byte[] serialize(TruckAvailability truckAvailability) throws IOException {
-        try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
-             ObjectOutputStream oos = new ObjectOutputStream(bos)) {
-            oos.writeObject(truckAvailability);
-            return bos.toByteArray();
-        }
     }
 }
