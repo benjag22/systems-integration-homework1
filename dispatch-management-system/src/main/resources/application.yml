@@ -1,0 +1,26 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /v1
+
+spring:
+  application:
+    name: dispatch-management-system
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5433/dispatch_db}
+    username: ${SPRING_DATASOURCE_USERNAME:dispatch_admin}
+    password: ${SPRING_DATASOURCE_PASSWORD:dispatch_secret_pass}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /docs

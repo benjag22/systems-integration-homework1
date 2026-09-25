@@ -1,0 +1,44 @@
+services:
+  dispatch-postgres:
+    image: postgres:17
+    container_name: dispatch-postgres
+    restart: unless-stopped
+    env_file:
+      - path: ".env"
+        required: false
+    environment:
+      POSTGRES_DB: ${DATABASE_NAME:-dispatch_db}
+      POSTGRES_USER: ${DATABASE_USER:-dispatch_user}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-dispatch_pass}
+    ports:
+      - "${DATABASE_PORT:-5433}:5432"
+    volumes:
+      - dispatch_postgres_data:/var/lib/postgresql/data
+      - ./db.sql:/docker-entrypoint-initdb.d/01-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  dispatch-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dispatch-api
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    env_file:
+      - path: ".env"
+        required: false
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://dispatch-postgres:5432/${DATABASE_NAME:-dispatch_db}
+      SPRING_DATASOURCE_USERNAME: ${DATABASE_USER:-dispatch_user}
+      SPRING_DATASOURCE_PASSWORD: ${DATABASE_PASSWORD:-dispatch_pass}
+    depends_on:
+      dispatch-postgres:
+        condition: service_healthy
+
+volumes:
+  dispatch_postgres_data:
