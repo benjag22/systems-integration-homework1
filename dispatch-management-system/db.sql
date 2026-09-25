@@ -14,8 +14,7 @@ create table shipment
     load_id     int,
     weight_kg   int          not null check (weight_kg > 0),
     detail      varchar(300) not null check (btrim(detail) <> ''),
-    status      varchar(20)  not null default 'REGISTERED'
-        check (status in ('REGISTERED', 'REVERTED')),
+    status      varchar(20)  not null default 'REGISTERED' check (status in ('REGISTERED', 'REVERTED')),
     created_at  timestamp    not null default now()
 );
 
