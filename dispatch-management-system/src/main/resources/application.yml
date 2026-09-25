@@ -34,3 +34,8 @@ app:
   auth:
     username: ${AUTH_USERNAME:demo}
     password: ${AUTH_PASSWORD:demo123}
+
+fleet:
+  grpc:
+    host: ${FLEET_GRPC_HOST:localhost}
+    port: ${FLEET_GRPC_PORT:9090}

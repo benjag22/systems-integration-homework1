@@ -1,0 +1,71 @@
+
+syntax = "proto3";
+
+package trucks;
+
+option java_multiple_files = true;
+option java_package = "com.example.grpc.proto";
+
+service TruckService {
+  rpc GetTruck (GetTruckRequest) returns (TruckWithRoutes);
+
+  rpc LoadTruck (LoadTruckRequest) returns (Truck);
+  rpc UnloadTruck (UnloadTruckRequest) returns (Truck);
+
+  rpc ListTrucks (ListTrucksRequest) returns (ListTrucksResponse);
+
+  rpc CheckAvailability (GetTruckRequest) returns (TruckAvailability);
+}
+
+message GetTruckRequest {
+  int32 truck_id = 1;
+}
+
+message ListTrucksRequest {}
+
+message LoadTruckRequest {
+  int32 truck_id = 1;
+  int32 weight_kg = 2;
+  string detail = 3;
+}
+
+message UnloadTruckRequest {
+  int32 truck_id = 1;
+  int32 load_id = 2;
+}
+
+message ListTrucksResponse {
+  repeated TruckWithRoutes trucks = 1;
+}
+
+message TruckWithRoutes {
+  Truck truck = 1;
+  repeated Route routes = 2;
+}
+
+message Truck {
+  int32 id = 1;
+  string license_plate = 2;
+  int32 max_capacity_kg = 3;
+  repeated LoadItem loads = 4;
+}
+
+message LoadItem {
+  int32 id = 1;
+  int32 weight_kg = 2;
+  string detail = 3;
+}
+
+message Route {
+  int32 id = 1;
+  string name = 2;
+  int32 distance_km = 3;
+  string origin = 4;
+  string destination = 5;
+}
+
+message TruckAvailability {
+  int32 truck_id = 1;
+  int32 available_capacity_kg = 2;
+  int32 max_capacity_kg = 3;
+}

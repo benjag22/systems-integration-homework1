@@ -153,6 +153,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   /despachos/{id}:
     get:
@@ -194,6 +196,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
 components:
   securitySchemes:
@@ -234,6 +238,19 @@ components:
       description: >-
         Conflicto de negocio, como correo de cliente duplicado, capacidad
         insuficiente o reutilización de Idempotency-Key con otro cuerpo.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    ServiceUnavailable:
+      description: >-
+        El servicio gRPC de Flota no respondió dentro del plazo (2s) o no está
+        disponible. Ver ADR-004. El cliente puede reintentar tras el tiempo
+        indicado en Retry-After.
+      headers:
+        Retry-After:
+          schema:
+            type: integer
       content:
         application/problem+json:
           schema:
