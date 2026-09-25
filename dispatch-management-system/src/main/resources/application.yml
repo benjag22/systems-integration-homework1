@@ -27,6 +27,8 @@ springdoc:
     path: /api-docs
   swagger-ui:
     path: /docs
+    url: /v1/openapi.yaml
+    disable-swagger-default-url: true
 
 app:
   auth:

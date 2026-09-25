@@ -12,7 +12,7 @@
     <artifactId>dispatch</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <name>dispatch-management-system</name>
-    <description>dispatch-management-system</description>
+    <description>API REST de clientes y despachos con documentación OpenAPI y Swagger UI.</description>
     <url/>
     <licenses>
         <license/>
@@ -29,6 +29,20 @@
     <properties>
         <java.version>17</java.version>
     </properties>
+
+    <resources>
+        <resource>
+            <directory>src/main/resources</directory>
+        </resource>
+        <resource>
+            <directory>${project.basedir}</directory>
+            <includes>
+                <include>openapi.yaml</include>
+            </includes>
+            <targetPath>static</targetPath>
+        </resource>
+    </resources>
+
     <dependencies>
         <dependency>
             <groupId>org.springdoc</groupId>

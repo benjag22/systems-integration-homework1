@@ -18,8 +18,9 @@ definidos en `docker-compose.yml`.
 ```
 
 3. La API queda disponible en `http://localhost:8080/v1`.
-    - Documentación Swagger UI: `http://localhost:8080/v1/docs`
-    - Spec OpenAPI: `http://localhost:8080/v1/api-docs`
+    - Documentación Swagger UI: `http://localhost:8080/v1/docs` (carga el contrato `openapi.yaml`).
+    - Contrato OpenAPI YAML: `http://localhost:8080/v1/openapi.yaml`.
+    - Especificación generada por Springdoc: `http://localhost:8080/v1/api-docs`.
    La API usa autenticación HTTP Basic. Para desarrollo, las credenciales predeterminadas son `demo` / `demo123`.
 
    Para comprobarla desde PowerShell:
