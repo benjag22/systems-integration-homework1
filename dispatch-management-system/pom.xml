@@ -32,19 +32,6 @@
         <protobuf.version>3.25.3</protobuf.version>
     </properties>
 
-    <resources>
-        <resource>
-            <directory>src/main/resources</directory>
-        </resource>
-        <resource>
-            <directory>${project.basedir}</directory>
-            <includes>
-                <include>openapi.yaml</include>
-            </includes>
-            <targetPath>static</targetPath>
-        </resource>
-    </resources>
-
     <dependencies>
         <dependency>
             <groupId>org.springdoc</groupId>
@@ -120,6 +107,18 @@
     </dependencies>
 
     <build>
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+            </resource>
+            <resource>
+                <directory>${project.basedir}</directory>
+                <includes>
+                    <include>openapi.yaml</include>
+                </includes>
+                <targetPath>static</targetPath>
+            </resource>
+        </resources>
         <extensions>
             <extension>
                 <groupId>kr.motd.maven</groupId>
