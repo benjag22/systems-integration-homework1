@@ -100,6 +100,51 @@ def summarize(rows: list[dict[str, Any]], phase: str) -> dict[str, Any] | None:
     }
 
 
+def plot_latencies(rows: list[dict[str, Any]], out_path: str, skip_warmup: bool = True) -> None:
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except ImportError:
+        print("[plot] matplotlib no está instalado")
+        return
+
+    fig, ax = plt.subplots(figsize=(9, 5))
+
+    for phase, label, color in (
+        ("baseline_up", "Flota arriba (201)", "tab:blue"),
+        ("fleet_down", "Flota caída (503)", "tab:red"),
+    ):
+        phase_rows = [r for r in rows if r["phase"] == phase]
+        if skip_warmup and phase == "baseline_up" and len(phase_rows) > 1:
+            phase_rows = phase_rows[1:]
+        if not phase_rows:
+            continue
+        trials = [r["trial"] for r in phase_rows]
+        latencies = [r["latency_ms"] for r in phase_rows]
+        ax.plot(trials, latencies, marker="o", label=label, color=color)
+
+    ax.set_xlabel("trial")
+    ax.set_ylabel("latencia (ms)")
+    ax.set_title("Latencia POST /v1/despachos por trial: Flota arriba vs caída")
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=150)
+    plt.close(fig)
+    print(f"[plot] guardado en {out_path}")
+
+
+def load_rows_from_csv(path: str) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    with open(path, newline="") as f:
+        for r in csv.DictReader(f):
+            r["trial"] = int(r["trial"])
+            r["latency_ms"] = float(r["latency_ms"])
+            rows.append(r)
+    return rows
+
+
 def wait_for_api(base_url: str, auth: dict[str, str], timeout: int = 120) -> None:
     deadline = time.time() + timeout
     time.sleep(10)
@@ -123,7 +168,15 @@ def main() -> None:
     ap.add_argument("--trials", type=int, default=DEFAULT_TRIALS)
     ap.add_argument("--weight-kg", type=int, default=DEFAULT_WEIGHT_KG)
     ap.add_argument("--out", default="experiment.csv")
+    ap.add_argument("--plot-out", default="latency_plot.png", help="ruta del gráfico PNG")
+    ap.add_argument("--no-plot", action="store_true", help="no generar el gráfico")
+    ap.add_argument("--plot-from-csv", metavar="PATH", help="solo lee PATH y genera el gráfico")
     args = ap.parse_args()
+
+    if args.plot_from_csv:
+        rows = load_rows_from_csv(args.plot_from_csv)
+        plot_latencies(rows, args.plot_out)
+        return
 
     print("docker compose down -v")
     subprocess.run(["docker", "compose", "down", "-v"], check=True)
@@ -194,6 +247,9 @@ def main() -> None:
         for r in rows:
             w.writerow({k: r.get(k, "") for k in fieldnames})
     print(f"datos guardados en {args.out}")
+
+    if not args.no_plot:
+        plot_latencies(rows, args.plot_out)
 
     for phase in ("baseline_up", "fleet_down"):
         s = summarize(rows, phase)

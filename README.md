@@ -44,6 +44,24 @@ Esto dispara la llamada gRPC real a Flota (`LoadTruck`). Para ver el modo de fal
 Detalle de idempotencia, HATEOAS y credenciales:
 [`dispatch-management-system/README.md`](dispatch-management-system/README.md).
 
+## Experimento
+
+Script `experimento.py` mide latencia y código HTTP de `POST /v1/despachos` con Flota arriba vs. caída, y genera el
+gráfico comparativo. Maneja `docker compose` por su cuenta (down, up --build, stop/start de `fleet-api`), no requiere
+Docker corriendo de antemano con pasos manuales. Se utiliza [uv](https://docs.astral.sh/uv) como manejo de dependencias.
+
+```bash
+uv sync
+uv run experimento.py
+```
+
+Para solo regenerar el gráfico a partir de un CSV ya existente, sin volver a correr el experimento:
+```bash
+uv run experimento.py --plot-from-csv experiment.csv
+```
+
+Output en `experiment.csv` (una fila por intento) y `latency_plot.png`(latencia por trial, ambas fases).
+
 ## Decisiones de diseño (ADR)
 
 - [ADR-001 - Dos servicios, no un monolito](docs/adr/ADR-001-descomposicion-servicios.md)
@@ -72,4 +90,5 @@ Detalle de idempotencia, HATEOAS y credenciales:
 
 Se usó Claude (Anthropic) como asistente de programación para implementar el cliente gRPC real de Despachos hacia Flota
 (antes existía solo un mock), unificar el despliegue Docker en un único `docker-compose.yml`, mapear las fallas de gRPC
-a `503`, y redactar los cuatro ADR en `docs/adr/`. Todo el código generado fue revisado antes de incluirse.
+a `503`, y redactar los cuatro ADR en `docs/adr/`. También se usó para escribir `experimento.py`. Todo el código
+generado fue revisado antes de incluirse.
