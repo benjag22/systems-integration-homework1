@@ -1,7 +1,6 @@
 services:
   fleet-postgres:
     image: postgres:17
-    container_name: fleet-postgres
     environment:
       POSTGRES_DB: fleet_db
       POSTGRES_USER: fleet_user
@@ -17,14 +16,13 @@ services:
 
   fleet-redis:
     image: redis:latest
-    container_name: fleet-redis
     volumes:
       - fleet_redis_data:/data
 
   fleet-api:
     build:
-      context: ./truck-fleet-system
-    container_name: fleet-api
+      context: .
+      dockerfile: truck-fleet-system/Dockerfile
     restart: unless-stopped
     environment:
       DB_URL: jdbc:postgresql://fleet-postgres:5432/fleet_db
@@ -32,15 +30,16 @@ services:
       DATABASE_PASSWORD: fleet_pass
       REDIS_HOST: fleet-redis
       REDIS_PORT: 6379
-    ports:
-      - "9090:9090"
+    expose:
+      - "9090"
     depends_on:
       fleet-postgres:
         condition: service_healthy
+      fleet-redis:
+        condition: service_started
 
   dispatch-postgres:
     image: postgres:17
-    container_name: dispatch-postgres
     environment:
       POSTGRES_DB: dispatch_db
       POSTGRES_USER: dispatch_user
@@ -56,8 +55,8 @@ services:
 
   dispatch-api:
     build:
-      context: ./dispatch-management-system
-    container_name: dispatch-api
+      context: .
+      dockerfile: dispatch-management-system/Dockerfile
     restart: unless-stopped
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://dispatch-postgres:5432/dispatch_db
@@ -65,6 +64,8 @@ services:
       SPRING_DATASOURCE_PASSWORD: dispatch_pass
       AUTH_USERNAME: ${AUTH_USERNAME:-demo}
       AUTH_PASSWORD: ${AUTH_PASSWORD:-demo123}
+      AUTH_VIEWER_USERNAME: ${AUTH_VIEWER_USERNAME:-viewer}
+      AUTH_VIEWER_PASSWORD: ${AUTH_VIEWER_PASSWORD:-viewer123}
       FLEET_GRPC_HOST: fleet-api
       FLEET_GRPC_PORT: 9090
     ports:
@@ -74,6 +75,16 @@ services:
         condition: service_healthy
       fleet-api:
         condition: service_started
+
+  fleet-client:
+    profiles: ["clients"]
+    build:
+      context: .
+      dockerfile: truck-fleet-client-dotnet/Dockerfile
+    environment:
+      FLEET_GRPC_ADDRESS: http://fleet-api:9090
+    depends_on:
+      - fleet-api
 
 volumes:
   fleet_postgres_data:

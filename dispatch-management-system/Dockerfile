@@ -1,19 +1,20 @@
 FROM eclipse-temurin:21-jdk AS builder
-WORKDIR /app
+WORKDIR /build/dispatch-management-system
 
-COPY .mvn/ .mvn
-COPY mvnw pom.xml ./
+COPY dispatch-management-system/.mvn/ .mvn
+COPY dispatch-management-system/mvnw dispatch-management-system/pom.xml ./
 RUN chmod +x mvnw
 RUN ./mvnw dependency:go-offline -B
 
-COPY src ./src
-COPY openapi.yaml ./openapi.yaml
-RUN ./mvnw package -DskipTests
+COPY proto /build/proto
+COPY dispatch-management-system/src ./src
+COPY dispatch-management-system/openapi.yaml ./openapi.yaml
+RUN ./mvnw package -Dmaven.test.skip=true -B
 
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
 
-COPY --from=builder /app/target/*.jar app.jar
+COPY --from=builder /build/dispatch-management-system/target/*.jar app.jar
 
 EXPOSE 8080
 

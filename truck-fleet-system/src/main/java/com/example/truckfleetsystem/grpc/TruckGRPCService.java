@@ -4,8 +4,14 @@ import com.example.grpc.proto.*;
 import com.example.truckfleetsystem.entity.RouteEntity;
 import com.example.truckfleetsystem.entity.TruckEntity;
 import com.example.truckfleetsystem.entity.TruckLoadEntity;
+import com.example.truckfleetsystem.service.InsufficientCapacityException;
+import com.example.truckfleetsystem.service.LoadNotFoundException;
+import com.example.truckfleetsystem.service.LoadTruckMismatchException;
+import com.example.truckfleetsystem.service.TruckNotFoundException;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.grpc.server.service.GrpcService;
 import com.example.truckfleetsystem.service.TruckLoadService;
@@ -19,12 +25,14 @@ import java.util.Optional;
 @GrpcService
 public class TruckGRPCService extends TruckServiceGrpc.TruckServiceImplBase {
 
+    private static final Logger log = LoggerFactory.getLogger(TruckGRPCService.class);
+
     private final TruckService truckService;
     private final TruckRouteService truckRouteService;
     private final TruckLoadService truckLoadService;
 
     private static final String CACHE_PREFIX = "truck:";
-    private static final Duration AVAILABILITY_CACHE_TTL = Duration.ofHours(1);
+    static final Duration AVAILABILITY_CACHE_TTL = Duration.ofSeconds(60);
     private final RedisTemplate<String, byte[]> redisTemplate;
 
     public TruckGRPCService(
@@ -100,115 +108,43 @@ public class TruckGRPCService extends TruckServiceGrpc.TruckServiceImplBase {
     @Override
     public void unloadTruck(UnloadTruckRequest request, StreamObserver<Truck> observer) {
         try {
-            Optional<TruckEntity> truckSaved = truckService.getTruck(request.getTruckId());
-            Optional<TruckLoadEntity> truckLoadSaved = truckLoadService.findById(request.getLoadId());
+            TruckEntity truck = truckService.unloadTruck(request.getTruckId(), request.getLoadId());
+            evictAvailability(truck.getId());
 
-            if (truckSaved.isEmpty()) {
-                observer.onError(
-                        Status.NOT_FOUND
-                                .withDescription("No se encontro el camion para descargar")
-                                .asRuntimeException()
-                );
-                return;
-            }
-            if (truckLoadSaved.isEmpty()) {
-                observer.onError(
-                        Status.NOT_FOUND
-                                .withDescription("No se encontro la carga para descargar")
-                                .asRuntimeException()
-                );
-                return;
-            }
-
-            TruckEntity truckChecked = truckSaved.get();
-            TruckLoadEntity truckLoadChecked = truckLoadSaved.get();
-
-            String cacheKey = availabilityCacheKey(truckChecked.getId());
-            redisTemplate.delete(cacheKey);
-            truckLoadService.unload(truckLoadChecked);
-
-            int availability = truckLoadService.calculateTruckAvailability(truckChecked);
-            cacheAvailability(truckChecked, availability);
-
-            List<TruckLoadEntity> loads = truckLoadService.findAllByTruck(truckChecked);
-            observer.onNext(Truck
-                    .newBuilder()
-                    .setId(truckChecked.getId())
-                    .setLicensePlate(truckChecked.getLicensePlate())
-                    .setMaxCapacityKg(truckChecked.getMaxCapacityKg())
-                    .addAllLoads(
-                            loads.stream()
-                                    .map(truckLoadEntity -> LoadItem.newBuilder()
-                                            .setId(truckLoadEntity.getId())
-                                            .setDetail(truckLoadEntity.getDetail())
-                                            .setWeightKg(truckLoadEntity.getWeightKg())
-                                            .build()
-                                    )
-                                    .toList()
-                    )
-                    .build()
-            );
+            observer.onNext(toTruckMessage(truck, truckLoadService.findAllByTruck(truck), null));
             observer.onCompleted();
+        } catch (TruckNotFoundException | LoadNotFoundException e) {
+            fail(observer, Status.NOT_FOUND, e.getMessage());
+        } catch (LoadTruckMismatchException e) {
+            fail(observer, Status.FAILED_PRECONDITION, e.getMessage());
         } catch (Exception e) {
-            observer.onError(
-                    Status.INTERNAL
-                            .withDescription("error al intentar descargar")
-                            .asRuntimeException()
-            );
+            log.error("Error al descargar camión {} carga {}", request.getTruckId(), request.getLoadId(), e);
+            fail(observer, Status.INTERNAL, "error al intentar descargar");
         }
     }
 
     @Override
     public void loadTruck(LoadTruckRequest request, StreamObserver<Truck> observer) {
         try {
-            Optional<TruckEntity> optionalTruck = truckService.getTruck(request.getTruckId());
-
-            if (optionalTruck.isEmpty()) {
-                observer.onError(
-                        Status.NOT_FOUND
-                                .withDescription("no se encontró el camión con id:" + request.getTruckId())
-                                .asRuntimeException()
-                );
-                return;
-            }
-
-            TruckEntity truckEntity = optionalTruck.get();
-            redisTemplate.delete(availabilityCacheKey(truckEntity.getId()));
-            TruckEntity truckChecked = truckService.loadTruck(
-                    truckEntity,
+            TruckLoadEntity created = truckService.loadTruck(
+                    request.getTruckId(),
                     request.getDetail(),
                     request.getWeightKg()
             );
+            TruckEntity truck = created.getTruck();
+            evictAvailability(truck.getId());
 
-            List<TruckLoadEntity> loads = truckLoadService.findAllByTruck(truckChecked);
-            int availability = truckLoadService.calculateTruckAvailability(truckChecked);
-            cacheAvailability(truckChecked, availability);
-            observer.onNext(Truck
-                    .newBuilder()
-                    .setId(truckChecked.getId())
-                    .setLicensePlate(truckChecked.getLicensePlate())
-                    .setMaxCapacityKg(truckChecked.getMaxCapacityKg())
-                    .addAllLoads(
-                            loads.stream()
-                                    .map(truckLoadEntity -> LoadItem.newBuilder()
-                                            .setId(truckLoadEntity.getId())
-                                            .setDetail(truckLoadEntity.getDetail())
-                                            .setWeightKg(truckLoadEntity.getWeightKg())
-                                            .build()
-                                    )
-                                    .toList()
-                    )
-                    .build()
-            );
-
+            observer.onNext(toTruckMessage(truck, truckLoadService.findAllByTruck(truck), created));
             observer.onCompleted();
+        } catch (TruckNotFoundException e) {
+            fail(observer, Status.NOT_FOUND, e.getMessage());
+        } catch (IllegalArgumentException e) {
+            fail(observer, Status.INVALID_ARGUMENT, e.getMessage());
+        } catch (InsufficientCapacityException e) {
+            fail(observer, Status.FAILED_PRECONDITION, e.getMessage());
         } catch (Exception e) {
-            observer.onError(
-                    Status.INTERNAL
-                            .withDescription("error al intentar cargar")
-                            .withCause(e)
-                            .asRuntimeException()
-            );
+            log.error("Error al cargar camión {}", request.getTruckId(), e);
+            fail(observer, Status.INTERNAL, "error al intentar cargar");
         }
     }
 
@@ -216,11 +152,10 @@ public class TruckGRPCService extends TruckServiceGrpc.TruckServiceImplBase {
     public void checkAvailability(GetTruckRequest request, StreamObserver<TruckAvailability> observer) {
         try {
             String key = availabilityCacheKey(request.getTruckId());
-            byte[] cachedBytes = redisTemplate.opsForValue().get(key);
+            TruckAvailability cached = readCachedAvailability(key);
 
-            if (cachedBytes != null) {
-                TruckAvailability cachedResponse = TruckAvailability.parseFrom(cachedBytes);
-                observer.onNext(cachedResponse);
+            if (cached != null) {
+                observer.onNext(cached);
                 observer.onCompleted();
                 return;
             }
@@ -242,7 +177,7 @@ public class TruckGRPCService extends TruckServiceGrpc.TruckServiceImplBase {
                     .setAvailableCapacityKg(availability)
                     .build();
 
-            redisTemplate.opsForValue().set(key, response.toByteArray(), AVAILABILITY_CACHE_TTL);
+            writeCachedAvailability(key, response);
 
             observer.onNext(response);
             observer.onCompleted();
@@ -257,21 +192,58 @@ public class TruckGRPCService extends TruckServiceGrpc.TruckServiceImplBase {
         }
     }
 
+    private void fail(StreamObserver<?> observer, Status status, String description) {
+        observer.onError(status.withDescription(description).asRuntimeException());
+    }
+
     private String availabilityCacheKey(int truckId) {
         return CACHE_PREFIX + truckId;
     }
 
-    private void cacheAvailability(TruckEntity truck, int availableCapacityKg) {
-        TruckAvailability response = TruckAvailability.newBuilder()
-                .setTruckId(truck.getId())
-                .setMaxCapacityKg(truck.getMaxCapacityKg())
-                .setAvailableCapacityKg(availableCapacityKg)
+    private TruckAvailability readCachedAvailability(String key) {
+        try {
+            byte[] bytes = redisTemplate.opsForValue().get(key);
+            return bytes == null ? null : TruckAvailability.parseFrom(bytes);
+        } catch (Exception e) {
+            log.warn("Caché de disponibilidad no disponible al leer {}: {}", key, e.toString());
+            return null;
+        }
+    }
+
+    private void writeCachedAvailability(String key, TruckAvailability value) {
+        try {
+            redisTemplate.opsForValue().set(key, value.toByteArray(), AVAILABILITY_CACHE_TTL);
+        } catch (Exception e) {
+            log.warn("Caché de disponibilidad no disponible al escribir {}: {}", key, e.toString());
+        }
+    }
+
+    private void evictAvailability(int truckId) {
+        try {
+            redisTemplate.delete(availabilityCacheKey(truckId));
+        } catch (Exception e) {
+            log.warn("No se pudo invalidar la caché del camión {}: {}", truckId, e.toString());
+        }
+    }
+
+    private LoadItem toLoadItem(TruckLoadEntity load) {
+        return LoadItem.newBuilder()
+                .setId(load.getId())
+                .setWeightKg(load.getWeightKg())
+                .setDetail(load.getDetail())
                 .build();
-        redisTemplate.opsForValue().set(
-                availabilityCacheKey(truck.getId()),
-                response.toByteArray(),
-                AVAILABILITY_CACHE_TTL
-        );
+    }
+
+    private Truck toTruckMessage(TruckEntity truck, List<TruckLoadEntity> loads, TruckLoadEntity created) {
+        Truck.Builder builder = Truck.newBuilder()
+                .setId(truck.getId())
+                .setLicensePlate(truck.getLicensePlate())
+                .setMaxCapacityKg(truck.getMaxCapacityKg())
+                .addAllLoads(loads.stream().map(this::toLoadItem).toList());
+        if (created != null) {
+            builder.setCreatedLoad(toLoadItem(created));
+        }
+        return builder.build();
     }
 
     private TruckWithRoutes getTruckDetail(TruckEntity truckEntity) {

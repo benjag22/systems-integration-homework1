@@ -9,6 +9,9 @@ import com.cargasur.dispatch.shipment.dto.CreateShipmentRequest;
 import com.cargasur.dispatch.shipment.dto.ShipmentLink;
 import com.cargasur.dispatch.shipment.dto.ShipmentResponse;
 import com.cargasur.dispatch.shipment.service.ShipmentService;
+import com.cargasur.dispatch.truck.controller.TruckController;
+import com.cargasur.dispatch.truck.dto.TruckAvailabilityResponse;
+import com.cargasur.dispatch.truck.service.TruckAvailabilityService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.swagger.v3.core.util.Yaml;
@@ -52,6 +55,7 @@ class OpenApiContractTest {
 
     private final ShipmentService shipmentService = mock(ShipmentService.class);
     private final ClientService clientService = mock(ClientService.class);
+    private final TruckAvailabilityService truckAvailabilityService = mock(TruckAvailabilityService.class);
     private MockMvc mockMvc;
 
     @BeforeAll
@@ -68,7 +72,8 @@ class OpenApiContractTest {
     void setUpMvc() {
         mockMvc = MockMvcBuilders.standaloneSetup(
                 new ShipmentController(shipmentService),
-                new ClientController(clientService)
+                new ClientController(clientService),
+                new TruckController(truckAvailabilityService)
         ).build();
     }
 
@@ -119,6 +124,16 @@ class OpenApiContractTest {
                 .header("Authorization", AUTHORIZATION)).andReturn();
 
         assertResponseMatchesContract("/despachos/{id}/revertir", HttpMethod.POST, 200, result);
+    }
+
+    @Test
+    void truckAvailabilityGetMatchesOpenApi() throws Exception {
+        when(truckAvailabilityService.getAvailability(2)).thenReturn(new TruckAvailabilityResponse(2, 800, 2000));
+
+        MvcResult result = mockMvc.perform(get("/camiones/2/disponibilidad")
+                .header("Authorization", AUTHORIZATION)).andReturn();
+
+        assertResponseMatchesContract("/camiones/{id}/disponibilidad", HttpMethod.GET, 200, result);
     }
 
     @Test
@@ -196,6 +211,11 @@ class OpenApiContractTest {
             Schema<?> referenced = api.getComponents().getSchemas().get(schemaName);
             assertNotNull(referenced, "Referencia OpenAPI inexistente: " + schema.get$ref());
             validateJson(value, referenced, location, api);
+            return;
+        }
+
+        if (value.isNull()) {
+            assertTrue(Boolean.TRUE.equals(schema.getNullable()), location + " no admite null");
             return;
         }
 

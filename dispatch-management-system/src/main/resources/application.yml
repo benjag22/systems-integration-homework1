@@ -34,6 +34,8 @@ app:
   auth:
     username: ${AUTH_USERNAME:demo}
     password: ${AUTH_PASSWORD:demo123}
+    viewer-username: ${AUTH_VIEWER_USERNAME:viewer}
+    viewer-password: ${AUTH_VIEWER_PASSWORD:viewer123}
 
 fleet:
   grpc:

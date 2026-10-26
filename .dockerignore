@@ -1,0 +1,12 @@
+.git
+.idea
+.postman
+**/build
+**/target
+**/.gradle
+**/bin
+**/obj
+.venv
+docs
+*.csv
+*.png

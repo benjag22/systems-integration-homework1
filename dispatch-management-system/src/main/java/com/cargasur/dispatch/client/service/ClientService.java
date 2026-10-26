@@ -4,6 +4,7 @@ import com.cargasur.dispatch.client.dto.ClientResponse;
 import com.cargasur.dispatch.client.dto.CreateClientRequest;
 import com.cargasur.dispatch.client.model.Client;
 import com.cargasur.dispatch.client.repository.ClientRepository;
+import com.cargasur.dispatch.config.exception.ConflictException;
 import com.cargasur.dispatch.config.exception.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -19,12 +20,13 @@ public class ClientService {
 
     @Transactional
     public ClientResponse createClient(CreateClientRequest request) {
-        if (clientRepository.existsByEmail(request.email())) {
-            throw new IllegalArgumentException("El email ya se encuentra registrado");
+        String email = request.email().trim();
+        if (clientRepository.existsByEmail(email)) {
+            throw new ConflictException("El email ya se encuentra registrado");
         }
         Client client = Client.builder()
                 .name(request.name().trim())
-                .email(request.email().trim())
+                .email(email)
                 .phone(request.phone() != null ? request.phone().trim() : null)
                 .build();
 

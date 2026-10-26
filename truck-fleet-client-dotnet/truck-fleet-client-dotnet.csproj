@@ -16,8 +16,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Protobuf Include="..\truck-fleet-system\src\main\proto\trucks.proto" GrpcServices="Client">
-      <Link>Protos\trucks.proto</Link>
+    <Protobuf Include="../proto/trucks.proto" GrpcServices="Client">
+      <Link>Protos/trucks.proto</Link>
     </Protobuf>
   </ItemGroup>
 </Project>

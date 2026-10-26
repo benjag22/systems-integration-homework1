@@ -1,19 +1,20 @@
 FROM eclipse-temurin:21-jdk AS builder
-WORKDIR /app
+WORKDIR /build/truck-fleet-system
 
-COPY gradlew ./
-COPY gradle ./gradle
-COPY build.gradle.kts settings.gradle.kts ./
+COPY truck-fleet-system/gradlew ./
+COPY truck-fleet-system/gradle ./gradle
+COPY truck-fleet-system/build.gradle.kts truck-fleet-system/settings.gradle.kts ./
 RUN chmod +x gradlew
 RUN ./gradlew --no-daemon dependencies || true
 
-COPY src ./src
+COPY proto /build/proto
+COPY truck-fleet-system/src ./src
 RUN ./gradlew --no-daemon bootJar -x test
 
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
 
-COPY --from=builder /app/build/libs/*.jar app.jar
+COPY --from=builder /build/truck-fleet-system/build/libs/*.jar app.jar
 
 EXPOSE 9090
 

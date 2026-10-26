@@ -28,6 +28,14 @@ dependencies {
     testImplementation("org.springframework.boot:spring-boot-starter-test")
 }
 
+sourceSets {
+    main {
+        extensions.configure<SourceDirectorySet>("proto") {
+            srcDir("../proto")
+        }
+    }
+}
+
 protobuf {
     plugins {
         create("grpc")

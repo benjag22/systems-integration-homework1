@@ -4,6 +4,7 @@ import com.example.truckfleetsystem.entity.TruckEntity;
 import com.example.truckfleetsystem.entity.TruckLoadEntity;
 import org.springframework.stereotype.Service;
 import com.example.truckfleetsystem.repository.TruckRepository;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Optional;
@@ -21,30 +22,49 @@ public class TruckService {
     public Optional<TruckEntity> getTruck(int truckId) {
         return truckRepository.findById(truckId);
     }
-    public List<TruckEntity> getAll(){
+
+    public List<TruckEntity> getAll() {
         return truckRepository.findAll();
     }
 
-    public TruckEntity loadTruck(TruckEntity truck, String detail, int weight) {
+    @Transactional
+    public TruckLoadEntity loadTruck(int truckId, String detail, int weight) {
         if (weight <= 0) {
             throw new IllegalArgumentException("El peso debe ser mayor que cero");
         }
-
-        List<TruckLoadEntity> currentLoads =
-                truckLoadService.findAllByTruck(truck);
-
-        int currentCapacity = currentLoads.stream()
-                .mapToInt(TruckLoadEntity::getWeightKg)
-                .sum();
-
-        if (currentCapacity + weight > truck.getMaxCapacityKg()) {
-            throw new IllegalStateException(
-                    "El camión no tiene capacidad suficiente"
-            );
+        if (detail == null || detail.isBlank() || detail.length() > 300) {
+            throw new IllegalArgumentException("El detalle es obligatorio y admite hasta 300 caracteres");
         }
 
-        truckLoadService.createLoad(truck, detail, weight);
+        TruckEntity truck = truckRepository.findByIdForUpdate(truckId)
+                .orElseThrow(() -> new TruckNotFoundException(truckId));
 
+        long loaded = truckLoadService.findAllByTruck(truck).stream()
+                .mapToLong(load -> load.getWeightKg())
+                .sum();
+        long available = truck.getMaxCapacityKg() - loaded;
+
+        if (weight > available) {
+            throw new InsufficientCapacityException(String.format(
+                    "El camión %d no tiene capacidad suficiente: disponible %d kg, solicitado %d kg",
+                    truckId, available, weight));
+        }
+
+        return truckLoadService.createLoad(truck, detail, weight);
+    }
+
+    @Transactional
+    public TruckEntity unloadTruck(int truckId, int loadId) {
+        TruckEntity truck = truckRepository.findByIdForUpdate(truckId)
+                .orElseThrow(() -> new TruckNotFoundException(truckId));
+        TruckLoadEntity load = truckLoadService.findById(loadId)
+                .orElseThrow(() -> new LoadNotFoundException(loadId));
+
+        if (!load.getTruck().getId().equals(truck.getId())) {
+            throw new LoadTruckMismatchException(loadId, truckId);
+        }
+
+        truckLoadService.unload(load);
         return truck;
     }
 }

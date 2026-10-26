@@ -23,8 +23,8 @@ services:
 
   dispatch-api:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: dispatch-management-system/Dockerfile
     container_name: dispatch-api
     restart: unless-stopped
     ports:

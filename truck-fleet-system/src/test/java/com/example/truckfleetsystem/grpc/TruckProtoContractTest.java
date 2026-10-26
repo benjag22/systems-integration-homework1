@@ -113,6 +113,7 @@ class TruckProtoContractTest {
         assertField(Truck.getDescriptor(), 3, "max_capacity_kg", "INT32");
         assertField(Truck.getDescriptor(), 4, "loads", "MESSAGE");
         assertTrue(Truck.getDescriptor().findFieldByNumber(4).isRepeated());
+        assertField(Truck.getDescriptor(), 5, "created_load", "MESSAGE");
         assertField(LoadItem.getDescriptor(), 1, "id", "INT32");
         assertField(LoadItem.getDescriptor(), 2, "weight_kg", "INT32");
         assertField(LoadItem.getDescriptor(), 3, "detail", "STRING");
@@ -163,7 +164,7 @@ class TruckProtoContractTest {
                 TruckServiceGrpc.getCheckAvailabilityMethod();
         InputStream wireResponse = method.getResponseMarshaller().stream(response);
         assertEquals(response, method.getResponseMarshaller().parse(wireResponse));
-        org.mockito.Mockito.verify(values).set(eq("truck:17"), any(byte[].class), eq(Duration.ofHours(1)));
+        org.mockito.Mockito.verify(values).set(eq("truck:17"), any(byte[].class), eq(Duration.ofSeconds(60)));
     }
 
     private static String bareMethodName(MethodDescriptor<?, ?> method) {

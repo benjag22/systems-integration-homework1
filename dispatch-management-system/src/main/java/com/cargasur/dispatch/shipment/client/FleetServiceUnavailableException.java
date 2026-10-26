@@ -1,7 +1,14 @@
 package com.cargasur.dispatch.shipment.client;
 
 public class FleetServiceUnavailableException extends RuntimeException {
-    public FleetServiceUnavailableException(String message, Throwable cause) {
+    private final String grpcStatus;
+
+    public FleetServiceUnavailableException(String message, String grpcStatus, Throwable cause) {
         super(message, cause);
+        this.grpcStatus = grpcStatus;
+    }
+
+    public String getGrpcStatus() {
+        return grpcStatus;
     }
 }

@@ -12,12 +12,15 @@ import com.cargasur.dispatch.shipment.model.ShipmentIdempotency;
 import com.cargasur.dispatch.shipment.repository.ShipmentIdempotencyRepository;
 import com.cargasur.dispatch.shipment.repository.ShipmentRepository;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.LocalDateTime;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -26,6 +29,8 @@ import java.util.Map;
 @Service
 @RequiredArgsConstructor
 public class ShipmentService {
+
+    private static final Logger log = LoggerFactory.getLogger(ShipmentService.class);
 
     private final ShipmentRepository shipmentRepository;
     private final ShipmentIdempotencyRepository idempotencyRepository;
@@ -61,7 +66,7 @@ public class ShipmentService {
 
         var reservation = fleetCapacityClient.verifyAndReserveCapacity(request.truckId(), request.weightKg());
         if (!reservation.success()) {
-            throw new IllegalStateException("No hay capacidad disponible en el camión: " + reservation.message());
+            throw new IllegalStateException(reservation.message());
         }
 
         Shipment shipment = Shipment.builder()
@@ -71,19 +76,26 @@ public class ShipmentService {
                 .weightKg(request.weightKg())
                 .detail(request.detail().trim())
                 .status("REGISTERED")
+                .createdAt(LocalDateTime.now())
                 .build();
 
-        Shipment saved = shipmentRepository.save(shipment);
-        ShipmentIdempotency idempotency = idempotencyRepository.findById(key)
-                .orElseThrow(() -> new IllegalStateException("No se pudo guardar la clave idempotente"));
-        idempotency.setShipmentId(saved.getId());
-        idempotencyRepository.save(idempotency);
+        Shipment saved;
+        try {
+            saved = shipmentRepository.saveAndFlush(shipment);
+            ShipmentIdempotency idempotency = idempotencyRepository.findById(key)
+                    .orElseThrow(() -> new IllegalStateException("No se pudo guardar la clave idempotente"));
+            idempotency.setShipmentId(saved.getId());
+            idempotencyRepository.saveAndFlush(idempotency);
+        } catch (RuntimeException e) {
+            compensateReservation(request, reservation.loadId(), e);
+            throw e;
+        }
         return mapToResponse(saved);
     }
 
     @Transactional
     public ShipmentResponse revertShipment(Integer id) {
-        Shipment shipment = shipmentRepository.findById(id)
+        Shipment shipment = shipmentRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Despacho no encontrado id: " + id));
 
         if ("REVERTED".equals(shipment.getStatus())) {
@@ -109,6 +121,16 @@ public class ShipmentService {
         return shipmentRepository.findAll().stream()
                 .map(this::mapToResponse)
                 .toList();
+    }
+
+    private void compensateReservation(CreateShipmentRequest request, Integer loadId, RuntimeException cause) {
+        try {
+            fleetCapacityClient.releaseCapacity(request.truckId(), loadId, request.weightKg());
+        } catch (RuntimeException releaseError) {
+            log.error("No se pudo liberar la carga {} del camión {} tras fallar el registro del despacho",
+                    loadId, request.truckId(), releaseError);
+            cause.addSuppressed(releaseError);
+        }
     }
 
     private ShipmentResponse mapToResponse(Shipment s) {

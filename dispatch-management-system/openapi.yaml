@@ -1,10 +1,10 @@
-openapi: 3.1.0
+openapi: 3.0.3
 info:
   title: API de Gestión de Despachos
-  version: 1.0.0
+  version: 1.1.0
   description: >-
-    API REST para registrar y consultar clientes y despachos, y para revertir
-    despachos que se encuentren activos.
+    API REST para registrar y consultar clientes y despachos, consultar la disponibilidad de los
+    camiones y revertir despachos que se encuentren activos. Cambios del contrato: docs/CHANGELOG-contratos.md.
 servers:
   - url: http://localhost:8080/v1
     description: Servidor local de desarrollo
@@ -15,6 +15,8 @@ tags:
     description: Registro y consulta de clientes.
   - name: Despachos
     description: Registro, consulta y reversión de despachos.
+  - name: Camiones
+    description: Consulta de disponibilidad de capacidad (informativa).
 paths:
   /clientes:
     get:
@@ -37,7 +39,7 @@ paths:
       tags: [Clientes]
       operationId: createClient
       summary: Crear cliente
-      description: Registra un cliente y devuelve la URI del recurso en el encabezado Location.
+      description: Registra un cliente y devuelve la URI del recurso en el encabezado Location. Requiere rol OPERATOR.
       requestBody:
         required: true
         content:
@@ -65,6 +67,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '409':
           $ref: '#/components/responses/Conflict'
 
@@ -82,10 +86,41 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ClientResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+
+  /camiones/{id}/disponibilidad:
+    get:
+      tags: [Camiones]
+      operationId: getTruckAvailability
+      summary: Consultar disponibilidad de un camión
+      description: >-
+        Capacidad disponible informada por Flota desde su caché (Redis, TTL 60 s, invalidada en cada
+        carga o descarga). Es informativa: la reserva real se valida de forma atómica en POST /despachos.
+        Agregado en 1.1.0 como cambio aditivo (no requiere /v2).
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Disponibilidad del camión.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TruckAvailability'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   /despachos:
     get:
@@ -109,9 +144,9 @@ paths:
       operationId: createShipment
       summary: Registrar despacho
       description: >-
-        Reserva capacidad en el camión indicado y registra el despacho. Repetir
-        la misma clave con el mismo cuerpo devuelve el despacho original; usar
-        la misma clave con datos distintos produce un conflicto.
+        Reserva capacidad en el camión indicado (verificación y carga atómicas en Flota) y registra el
+        despacho. Repetir la misma clave con el mismo cuerpo devuelve el despacho original; usar la misma
+        clave con datos distintos produce un conflicto. Requiere rol OPERATOR.
       parameters:
         - name: Idempotency-Key
           in: header
@@ -149,10 +184,14 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '502':
+          $ref: '#/components/responses/BadGateway'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
 
@@ -170,6 +209,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ShipmentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -180,7 +221,7 @@ paths:
       tags: [Despachos]
       operationId: revertShipment
       summary: Revertir despacho
-      description: Libera en Flota la capacidad reservada y cambia el estado a REVERTED.
+      description: Libera en Flota la carga asociada al despacho y cambia el estado a REVERTED. Requiere rol OPERATOR.
       parameters:
         - $ref: '#/components/parameters/Id'
       responses:
@@ -190,12 +231,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ShipmentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '502':
+          $ref: '#/components/responses/BadGateway'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
 
@@ -204,7 +251,9 @@ components:
     basicAuth:
       type: http
       scheme: basic
-      description: Autenticación HTTP Basic. En desarrollo se configura con AUTH_USERNAME y AUTH_PASSWORD.
+      description: >-
+        Autenticación HTTP Basic (ADR-005). Rol OPERATOR (AUTH_USERNAME, por defecto demo): lectura y escritura.
+        Rol VIEWER (AUTH_VIEWER_USERNAME, por defecto viewer): solo GET; cualquier otro método responde 403.
   parameters:
     Id:
       name: id
@@ -217,7 +266,7 @@ components:
         minimum: 1
   responses:
     BadRequest:
-      description: Solicitud inválida o cuerpo que no cumple la validación.
+      description: Solicitud inválida, encabezado obligatorio ausente o cuerpo que no cumple la validación.
       content:
         application/problem+json:
           schema:
@@ -228,25 +277,43 @@ components:
         WWW-Authenticate:
           schema:
             type: string
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    Forbidden:
+      description: Usuario autenticado sin permiso para la operación (rol VIEWER intentando escribir).
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
     NotFound:
-      description: El cliente o despacho solicitado no existe.
+      description: El cliente, camión o despacho solicitado no existe.
       content:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/ProblemDetail'
     Conflict:
       description: >-
-        Conflicto de negocio, como correo de cliente duplicado, capacidad
-        insuficiente o reutilización de Idempotency-Key con otro cuerpo.
+        Conflicto de negocio, no reintentable sin cambiar la solicitud: correo de cliente duplicado, capacidad
+        insuficiente en el camión (rechazo FAILED_PRECONDITION de Flota), camión inexistente en Flota,
+        reutilización de Idempotency-Key con otro cuerpo o despacho ya revertido.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    BadGateway:
+      description: >-
+        Flota respondió con un error inesperado (código gRPC distinto de UNAVAILABLE, DEADLINE_EXCEEDED o
+        RESOURCE_EXHAUSTED). No se invita a reintentar; la causa viaja en grpcStatus. Ver ADR-004.
       content:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/ProblemDetail'
     ServiceUnavailable:
       description: >-
-        El servicio gRPC de Flota no respondió dentro del plazo (2s) o no está
-        disponible. Ver ADR-004. El cliente puede reintentar tras el tiempo
-        indicado en Retry-After.
+        Flota no está disponible (grpcStatus UNAVAILABLE, falla inmediata) o no respondió dentro del plazo de
+        2 s (grpcStatus DEADLINE_EXCEEDED). Reintentable tras el tiempo indicado en Retry-After. Ver ADR-004.
       headers:
         Retry-After:
           schema:
@@ -272,7 +339,8 @@ components:
           minLength: 1
           maxLength: 150
         phone:
-          type: [string, 'null']
+          type: string
+          nullable: true
           maxLength: 20
       required: [name, email]
 
@@ -288,7 +356,8 @@ components:
           type: string
           format: email
         phone:
-          type: [string, 'null']
+          type: string
+          nullable: true
       required: [id, name, email]
 
     CreateShipmentRequest:
@@ -327,8 +396,10 @@ components:
           type: integer
           format: int32
         loadId:
-          type: [integer, 'null']
+          type: integer
           format: int32
+          nullable: true
+          description: Id de la carga creada en Flota para este despacho; se usa para revertirlo.
         weightKg:
           type: integer
           format: int32
@@ -367,6 +438,22 @@ components:
           format: uri-reference
       required: [href]
 
+    TruckAvailability:
+      type: object
+      properties:
+        truckId:
+          type: integer
+          format: int32
+        availableCapacityKg:
+          type: integer
+          format: int32
+          minimum: 0
+        maxCapacityKg:
+          type: integer
+          format: int32
+          minimum: 1
+      required: [truckId, availableCapacityKg, maxCapacityKg]
+
     ProblemDetail:
       type: object
       properties:
@@ -383,3 +470,8 @@ components:
         instance:
           type: string
           format: uri-reference
+        grpcStatus:
+          type: string
+          description: >-
+            Solo en 502 y 503: código gRPC real que devolvió Flota (UNAVAILABLE, DEADLINE_EXCEEDED,
+            RESOURCE_EXHAUSTED, INTERNAL...). Permite distinguir la causa de la falla.
