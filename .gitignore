@@ -2,7 +2,5 @@
 .idea/
 **/bin/
 **/obj/
-*.csv
-*.png
 .venv/
 __pycache__/

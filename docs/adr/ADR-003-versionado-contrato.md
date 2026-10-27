@@ -1,48 +1,60 @@
-# ADR-003 - Versionado y evolución de los contratos
+# ADR-003 - Versionado, evolución y comunicación de cambios de los contratos
 
-**Estado:** Aceptada
+**Estado:** Aceptada (revisada: `reserved`, avisos concretos y fuente única del `.proto`)
 
 ## Contexto
 
-Los dos contratos (`openapi.yaml` para REST, `trucks.proto` para gRPC) van a cambiar con el tiempo (e.j. nuevos campos,
-nuevas reglas de negocio). Hay que definir de antemano qué cambios se consideran seguros y cómo se enteran los
-consumidores, en vez de decidirlo caso a caso.
+Los dos contratos (`openapi.yaml` para REST, `proto/trucks.proto` para gRPC) van a cambiar con el tiempo (nuevos campos,
+nuevas reglas de negocio). Hay que definir de antemano qué cambios se consideran seguros, cómo se enteran los
+consumidores y cómo se evita que el contrato y el código diverjan, en vez de decidirlo caso a caso.
 
 ## Alternativas consideradas
 
-- **Opción A - Nunca romper nada, todo aditivo para siempre:** Máxima compatibilidad, pero acumula campos obsoletos
-  indefinidamente y complica el contrato.
-- **Opción B - Reglas explícitas de compatibilidad + versión nueva solo cuando se rompen:** Aditivo se permite sin
-  versión nueva, donde lo incompatible exige una versión nueva y coexistencia temporal entre versiones (deprecación y
-  luego eliminación).
-- **Opción C - Versionar en cada cambio, sin distinguir aditivo de incompatible:** Simple de anunciar, pero fuerza a
-  todos los consumidores a migrar aunque el cambio no los afecte.
+- **Opción A - Todo aditivo para siempre:** máxima compatibilidad, pero acumula campos obsoletos indefinidamente.
+- **Opción B - Reglas explícitas de compatibilidad + versión nueva solo cuando se rompe:** lo aditivo no requiere
+  versión nueva; lo incompatible exige una versión nueva que convive con la anterior (deprecación y luego eliminación).
+- **Opción C - Versionar en cada cambio:** simple de anunciar, pero fuerza a todos los consumidores a migrar aunque el
+  cambio no los afecte.
+- **Fuente del `.proto`:** (1) una copia por proyecto, sincronizadas a mano; (2) un único archivo referenciado por todos
+  los builds.
 
 ## Decisión
 
-Opción B, aplicada distinto según el protocolo:
+Opción B, con estas reglas:
 
-- **REST:** versión en la URL (`/v1`). Agregar un campo opcional a un`schema` (por ejemplo, `phone` ya es opcional en
-  `CreateClientRequest`) es compatible y no exige `/v2`. Quitar un campo, cambiar su tipo, o volver obligatorio un campo
-  antes opcional, exige `/v2` conviviendo con `/v1`mientras haya consumidores del contrato viejo.
-- **gRPC/protobuf:** agregar un campo nuevo con un número de tag nuevo es compatible (los clientes viejos lo ignoran.
-  Ver `TruckAvailability` si mañana se agrega, por ejemplo, `estimated_delivery_days = 4`). Renumerar o reutilizar un
-  tag existente, o cambiar el tipo de un campo, no es compatible y exige un nuevo mensaje o servicio (`TruckServiceV2`)
-  en el mismo `.proto`.
+- **REST:** versión en la URL (`/v1`). Son compatibles: agregar un campo opcional, un endpoint o un código de error
+  documentado (p. ej. `GET /camiones/{id}/disponibilidad` y el campo `grpcStatus` de los errores, ambos en 1.1.0, sin
+  `/v2`). Son incompatibles: quitar o renombrar un campo, cambiar su tipo o volver obligatorio algo opcional; exigen
+  `/v2` conviviendo con `/v1`.
+- **gRPC/protobuf:** agregar un campo con un número nuevo es compatible (p. ej. `Truck.created_load = 5`, agregado en
+  1.1 sin versión nueva). Cambiar el tipo o reutilizar un número no es compatible y exige un mensaje o servicio nuevo
+  (`TruckServiceV2`). **Al eliminar un campo se declara `reserved <número>; reserved "<nombre>";`** para que no se
+  reutilice por error.
+- **Cómo se enteran los consumidores:** (1) `docs/CHANGELOG-contratos.md` registra cada versión de ambos contratos; (2)
+  lo que se retira se marca antes con `deprecated: true` en OpenAPI (y `[deprecated = true]` en protobuf) durante, al
+  menos, una versión; (3) en `/v1` las respuestas de una operación en retiro llevan las cabeceras `Deprecation` y
+  `Sunset` (RFC 8594) con la fecha de eliminación; (4) `info.version` de OpenAPI sube en cada cambio.
+- **Fuente única del `.proto`:** `proto/trucks.proto` en la raíz. Flota (`srcDir("../proto")`), Despachos
+  (`protoSourceRoot`) y el cliente .NET lo compilan directamente; los Dockerfiles copian esa carpeta. Ya no existen
+  copias que puedan desalinearse.
+- **Contrato y código no divergen:** `OpenApiContractTest` (Despachos) valida las respuestas reales de los controladores
+  contra `openapi.yaml`, y `TruckProtoContractTest` (Flota) valida el descriptor generado. El contrato es la fuente de
+  verdad: si el código difiere, se corrige el código (p. ej. el correo duplicado responde 409 como declara el contrato).
+- **OpenAPI 3.0.3:** se usa 3.0 con `nullable: true` porque el parser del test de contrato (swagger-core) no interpreta
+  la sintaxis de 3.1 (`type: [string, 'null']`).
 
 ## Justificación
 
-Esta distinción (aditivo vs. incompatible) es exactamente la que protobuf ya modela con sus números de campo, así que
-seguirla evita reinventar reglas. Para REST, `/v1` en la ruta es el mecanismo más simple de anunciar una ruptura sin
-necesitar content negotiation, además de ser convención utilizada en la industria.
+La distinción aditivo / incompatible es la que protobuf ya modela con sus números de campo; seguirla evita reinventar
+reglas. Para REST, `/v1` en la ruta es el mecanismo más simple de anunciar una ruptura sin negociación de contenido. Una
+sola fuente del `.proto` elimina por construcción el riesgo que ADR-002 aceptaba como costo.
 
 ## Costo aceptado
 
-Mantener dos versiones vivas en paralelo (`/v1` y `/v2`, o dos rpcs) tiene costo de mantenimiento mientras dura la
-migración, esto se acepta a cambio de no romper consumidores sin aviso.
+Mantener dos versiones vivas en paralelo (`/v1` y `/v2`, o dos RPC) durante la migración, y que el cambio de un `.proto`
+compartido obligue a recompilar todos los consumidores del repositorio.
 
 ## Consecuencias
 
-Todo cambio incompatible debe declararse primero en el `.proto` u`openapi.yaml` versionado en el repositorio, antes de
-tocar el código, y notificarse a los consumidores conocidos (personal interno, portal web, Flota) con antelación a que
-se retire la versión vieja.
+Todo cambio incompatible se declara primero en `proto/trucks.proto` u `openapi.yaml`, se registra en el changelog y se
+anuncia con `deprecated`/`Sunset` antes de retirar la versión vieja.

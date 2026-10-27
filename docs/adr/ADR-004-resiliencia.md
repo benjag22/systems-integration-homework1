@@ -1,49 +1,70 @@
-# ADR-004 - Qué hace Despachos cuando Flota está caída o lenta
+# ADR-004 - Qué hace Despachos cuando Flota está caída, lenta o responde un error
 
-**Estado:** Aceptada
+**Estado:** Aceptada (revisada tras medir el comportamiento real; ver `docs/experimento/`)
 
 ## Contexto
 
-Despachos depende de una llamada gRPC a Flota para poder registrar o revertir un despacho. Esa dependencia puede fallar
-de dos formas distintas, si Flota está caída (conexión rechazada) o si Flota está viva, pero lenta (no responde a
-tiempo). Sin una decisión explícita, el llamador podría quedar colgado indefinidamente o devolver un 500 genérico que no
-distingue entre "tu pedido es inválido" y "no pudimos verificarlo".
+Despachos depende de una llamada gRPC a Flota para registrar o revertir un despacho. Esa dependencia falla de tres
+formas distintas, que el cliente de la API debe poder distinguir:
+
+1. **Flota caída** (contenedor detenido): la conexión se rechaza o el nombre no resuelve. gRPC responde `UNAVAILABLE` de
+   inmediato, **sin esperar el deadline**.
+2. **Flota lenta o congelada** (proceso vivo que no responde): la llamada espera el deadline y falla con
+   `DEADLINE_EXCEEDED`.
+3. **Flota responde, pero rechaza o falla:** el servidor devuelve un código de negocio (`FAILED_PRECONDITION`,
+   `NOT_FOUND`, `INVALID_ARGUMENT`) o un error propio (`INTERNAL`).
 
 ## Alternativas consideradas
 
-- **Opción A - Esperar indefinidamente:** No define timeout, si Flota nunca responde, entonces la petición HTTP tampoco.
-  Esto es inaceptable, un cliente lento encadenado también cuelga a Despachos.
-- **Opción B - Timeout corto + 503 con `Retry-After`, sin reintento automático:** El código gRPC distingue por qué falló
-  y lo traduce a un código HTTP semánticamente distinto de un conflicto de negocio.
-- **Opción C - Reintentar automáticamente 2-3 veces antes de fallar:** Reduce fallas transitorias, pero en un pico de
-  carga real amplifica la presión sobre un Flota ya lento (retry storm) y complica la idempotencia del lado de Flota
-  (`LoadTruck` no es idempotente, dado que dos ejecuciones exitosas crean dos cargas).
+- **Opción A - Esperar indefinidamente:** inaceptable; una Flota lenta cuelga también a Despachos.
+- **Opción B - Deadline corto + traducción por código gRPC, sin reintento automático.**
+- **Opción C - Reintentar automáticamente 2-3 veces:** reduce fallas transitorias, pero amplifica la presión sobre una
+  Flota ya lenta (retry storm) y `LoadTruck` no es idempotente, por lo que un reintento tras una respuesta perdida
+  crearía dos cargas.
 
 ## Decisión
 
-Opción B: `withDeadlineAfter(2s)` en el stub bloqueante de gRPC (`GrpcFleetCapacityClient`). Si el código gRPC es
-`UNAVAILABLE` o`DEADLINE_EXCEEDED`, Despachos responde `503 Service Unavailable` con encabezado `Retry-After: 5` y
-cuerpo `application/problem+json`. Si el código es `NOT_FOUND` (camión inexistente) o `FAILED_PRECONDITION`(capacidad
-insuficiente), se trata como conflicto de negocio (`409`), no como falla de infraestructura.
+Opción B. El stub usa `withDeadlineAfter(2s)` y los errores se traducen así:
+
+| Origen en Flota                           | Código gRPC           | Respuesta de la API                              | ¿Reintentar?          |
+|-------------------------------------------|-----------------------|--------------------------------------------------|-----------------------|
+| Sin capacidad suficiente                  | `FAILED_PRECONDITION` | **409**                                          | No: cambiar el pedido |
+| Camión o carga inexistente                | `NOT_FOUND`           | 409 (404 en `GET /camiones/{id}/disponibilidad`) | No                    |
+| Peso o detalle inválido                   | `INVALID_ARGUMENT`    | 409                                              | No                    |
+| Flota caída                               | `UNAVAILABLE`         | **503** + `Retry-After: 5`                       | Sí                    |
+| Flota lenta (> 2 s)                       | `DEADLINE_EXCEEDED`   | **503** + `Retry-After: 5`                       | Sí                    |
+| Flota saturada                            | `RESOURCE_EXHAUSTED`  | 503 + `Retry-After: 5`                           | Sí                    |
+| Cualquier otro (`INTERNAL`, `UNKNOWN`...) | otro                  | **502** sin `Retry-After`                        | No a ciegas           |
+
+El cuerpo `application/problem+json` de 502 y 503 incluye `grpcStatus` con el código real, de modo que un 503 nunca se
+confunde con un error de otra causa y el experimento puede verificar la causa subyacente.
+
+**Recuperación:** tras una caída el canal gRPC reintenta la conexión con backoff exponencial (hasta ~2 min). Ante cada
+`UNAVAILABLE` el cliente llama a `ManagedChannel.resetConnectBackoff()` (como máximo una vez por segundo) para
+reconectar apenas Flota vuelva. Las dependencias `io.grpc:*` de Despachos se resuelven a una sola versión (ADR-003); con
+versiones mezcladas el canal quedaba inutilizable tras una caída (`NoSuchMethodError`) y Despachos no se recuperaba sin
+reiniciarse.
 
 ## Justificación
 
 Separar "Flota no está disponible" (503, reintentable) de "el camión no tiene capacidad" (409, no reintentable sin
-cambiar el pedido) evita que un cliente reintente ciegamente un pedido que va a fallar siempre, y evita que un cliente
-abandone un pedido que sí podría prosperar si reintenta en unos segundos. Dos segundos de deadline se eligen porque la
-consulta de disponibilidad es de alto volumen. Un timeout más largo degrada la API pública completa ante cualquier
-lentitud de Flota, mientras que uno más corto arriesga falsos negativos bajo carga normal.
+cambiar el pedido) evita que un cliente reintente ciegamente un pedido que fallará siempre y que abandone uno que
+prosperaría en unos segundos. Dos segundos de deadline equilibran el volumen alto de consultas (un timeout largo degrada
+toda la API) con los falsos negativos bajo carga normal. La respuesta ante una caída es inmediata y la ante una lentitud
+llega a ~2 s: **no se espera que ambas tengan la misma latencia**; eso se verifica en el experimento.
 
 ## Costo aceptado
 
-Con Opción B, una lentitud transitoria de Flota (por ejemplo, un GC pause de 2.5s) se reporta como 503 aunque Flota se
-hubiera recuperado al instante siguiente. Se acepta ese falso negativo ocasional a cambio de que Despachos nunca quede
-bloqueado esperando. El costo se puede medir reproduciendo el experimento de timeout de la sección de Competencia 6 de
-este repositorio: bajar `fleet-api` con `docker compose stop fleet-api` y observar el `503` y su latencia (≈2s) contra
-un `POST /v1/despachos`.
+- Una lentitud transitoria se reporta como 503 aunque Flota se hubiera recuperado al instante.
+- **Resultado ambiguo:** si Flota confirma `LoadTruck` pero la respuesta no llega antes del deadline, Despachos responde
+  503 sin conocer el `loadId`, y un reintento con otra clave crearía una segunda carga (huérfana). Para no ampliar el
+  contrato, esto se documenta como límite; la solución natural es un `request_id` idempotente en `LoadTruckRequest`
+  (cambio aditivo, ADR-003).
+- Despachos mantiene abierta una transacción de base de datos mientras espera a Flota (hasta 2 s).
+- Cuando falla el guardado local después de reservar en Flota, Despachos compensa liberando la carga recién creada.
 
 ## Consecuencias
 
-Cualquier consumidor de la API pública (portal web) debe manejar `503` como "reintentable tras Retry-After", distinto de
-`409` ("cambia el pedido"). Si en el futuro se agrega un circuit breaker, debe abrir el circuito sobre la tasa de
-`UNAVAILABLE`/`DEADLINE_EXCEEDED`, no sobre la de `NOT_FOUND`.
+Los consumidores de la API tratan 503 como "reintentable tras `Retry-After`", 409 como "cambie el pedido" y 502 como
+"avise a soporte". Un circuit breaker futuro debe abrirse según la tasa de `UNAVAILABLE`/`DEADLINE_EXCEEDED`, no de
+`FAILED_PRECONDITION`.

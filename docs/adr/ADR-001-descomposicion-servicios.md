@@ -37,6 +37,14 @@ Despachos duplica a propósito `truckId` sin poder validar contra Flota más que
 integridad referencial entre bases). Si Flota da de baja un camión con despachos históricos, esa inconsistencia debe
 tolerarse o resolverse a nivel de negocio, no al nivel de base de datos.
 
+## El `loadId` también pertenece a Flota
+
+Despachos guarda `truckId` y `loadId`, ambos identificadores de datos que administra Flota. `loadId` es el único
+vínculo con la carga creada en Flota y Despachos depende de él para revertir. Por eso **Flota debe informarlo**:
+`LoadTruck` devuelve la carga creada en `Truck.created_load` (cambio aditivo, ADR-003). Inferirlo desde la lista de
+cargas del camión (por ejemplo, "el id máximo") es incorrecto con solicitudes simultáneas, porque dos despachos pueden
+asignarse la misma carga y una reversión terminaría liberando la carga de otro despacho.
+
 ## Consecuencias
 
 Todo cambio de capacidad debe pasar por Flota. Si en el futuro se agregan más consumidores de Flota (por ejemplo,

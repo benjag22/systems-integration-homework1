@@ -38,7 +38,13 @@ gRPC sobre un contrato `.proto` compartido.
 
 Se deben generar stubs y mantener el `.proto` sincronizado en dos proyectos (Despachos y Flota), dado que un
 desalineamiento entre ambas copias del contrato rompe la integración sin que el compilador lo avise, porque cada lado lo
-compila por separado. Se mitiga versionando el mismo archivo en ambos repos y con `TruckProtoContractTest` de Flota.
+compila por separado. Se mitiga con una **única fuente**: `proto/trucks.proto` en la raíz del repositorio, compilado por
+Flota (Gradle), Despachos (Maven) y el cliente .NET (ver ADR-003), y con `TruckProtoContractTest` de Flota.
+
+## Modo de invocación
+
+Todas las RPC son unarias; la justificación y las alternativas (streaming) están en
+[ADR-008](ADR-008-modo-invocacion-grpc.md).
 
 ## Consecuencias
 
